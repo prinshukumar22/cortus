@@ -30,7 +30,7 @@ const SetAvatar = () => {
         image: avatars[selectedAvatar],
       });
 
-      if (data.isSet) {
+      if (data && data.isSet) {
         user.isAvatarImageSet = true;
         user.avatarImage = data.image;
         localStorage.setItem("chat-app-user", JSON.stringify(user));
@@ -56,7 +56,7 @@ const SetAvatar = () => {
         );
         // console.log(image);
         const buffer = new Buffer(image.data);
-        console.log(buffer);
+        // console.log(buffer);
         data.push(buffer.toString("base64"));
       }
       setAvatars(data);

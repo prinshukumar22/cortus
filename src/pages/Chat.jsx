@@ -9,6 +9,7 @@ import Welcome from "../components/Welcome";
 import ChatContainer from "../components/ChatContainer";
 const Chat = () => {
   const socket = useRef();
+  console.log(socket);
   const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [currentUser, setCurrentUser] = useState(undefined);

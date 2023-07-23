@@ -8,29 +8,144 @@ import axios from "axios";
 const ChatContainer = ({ currentChat, currentUser, socket }) => {
   const [messages, setMessages] = useState([]);
   const [arrivalMessage, setArrivalMessage] = useState(null);
+  const [formattingoption, setFormattingoption] = useState("");
+  const [formatting, setFormatting] = useState({
+    bold: false,
+    italic: false,
+    strikeThrough: false,
+    codeSnippet: false,
+    codeBlock: false,
+  });
+
+  const parseMessageContent = (message, formatting) => {
+    // This function parses the message content and applies formatting styles
+    let parsedMessage = message;
+    parsedMessage = parsedMessage.replace(
+      /\*\*(.*?)\*\*/g,
+      "<strong>$1</strong>"
+    ); // Bold
+    parsedMessage = parsedMessage.replace(/\*(.*?)\*/g, "<em>$1</em>"); // Italic
+    parsedMessage = parsedMessage.replace(/__(.*?)__/g, "<u>$1</u>"); // Underline
+    parsedMessage = parsedMessage.replace(/~~(.*?)~~/g, "<del>$1</del>"); // Strikethrough
+
+    parsedMessage = parsedMessage.replace(
+      /```([^`]+)```/g,
+      "<code class='code-snippet'>$1</code>"
+    ); // Code snippet
+
+    // Check for code block formatting and wrap the entire code block in a <code> tag
+    if (formatting === "codeBlock") {
+      parsedMessage = `<code class="code-block">${parsedMessage}</code>`;
+    } else {
+      parsedMessage = `<code>${parsedMessage}</code>`; // Regular code formatting
+    }
+
+    return parsedMessage;
+  };
+
+  const applyFormatting = (text, option) => {
+    switch (option) {
+      case "bold":
+        return `**${text}**`;
+      case "italic":
+        return `*${text}*`;
+      case "underline":
+        return `__${text}__`;
+      case "strikethrough":
+        return `~~${text}~~`;
+      case "codeSnippet": // For code snippet, use triple backticks
+        return "```" + text + "```";
+      case "codeBlock": // For code block, use triple backticks
+        return "```\n" + text + "\n```";
+      default:
+        return text;
+    }
+  };
   const scrollRef = useRef();
   const handleSendMsg = async (msg) => {
-    await axios.post(sendMsgRoute, {
-      message: msg,
-      from: currentUser._id,
-      to: currentChat._id,
-    });
-    // console.log(data);
-    socket.current.emit("send-msg", {
-      to: currentChat._id,
-      from: currentUser._id,
-      message: msg,
-    });
+    const formatted = applyFormatting(msg, formattingoption);
+    if (formatting.codeSnippet) {
+      const codeSnippetFormatted = `\`\`\`${formatted}\`\`\``;
+      await axios.post(sendMsgRoute, {
+        message: codeSnippetFormatted,
+        from: currentUser._id,
+        to: currentChat._id,
+        formatting: "codeSnippet",
+      });
 
-    const msgs = [...messages];
-    msgs.push({ fromSelf: true, message: msg });
-    setMessages(msgs);
+      socket.current.emit("send-msg", {
+        to: currentChat._id,
+        from: currentUser._id,
+        message: codeSnippetFormatted,
+        formatting: "codeSnippet",
+      });
+
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          fromSelf: true,
+          message: codeSnippetFormatted,
+          formatting: "codeSnippet",
+        },
+      ]);
+
+      setFormatting((prev) => ({
+        ...prev,
+        codeSnippet: false,
+      }));
+    } else if (formatting.codeBlock) {
+      setFormatting((prev) => ({ ...prev, codeBlock: false })); // Reset code block button status
+      await axios.post(sendMsgRoute, {
+        message: formatted,
+        from: currentUser._id,
+        to: currentChat._id,
+        formatting: "codeBlock", // Set the formatting option to "codeBlock"
+      });
+
+      socket.current.emit("send-msg", {
+        to: currentChat._id,
+        from: currentUser._id,
+        message: formatted,
+        formatting: "codeBlock", // Set the formatting option to "codeBlock"
+      });
+
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { fromSelf: true, message: formatted, formatting: "codeBlock" }, // Include the formatting information in the message object
+      ]);
+      setFormattingoption("none");
+    } else {
+      setFormatting((prev) => ({
+        ...prev,
+        bold: false,
+        italic: false,
+        strikeThrough: false,
+      }));
+      await axios.post(sendMsgRoute, {
+        message: formatted,
+        from: currentUser._id,
+        to: currentChat._id,
+        formatting: formattingoption,
+      });
+      // console.log(data);
+      socket.current.emit("send-msg", {
+        to: currentChat._id,
+        from: currentUser._id,
+        message: formatted,
+        formatting: formattingoption,
+      });
+
+      const msgs = [...messages];
+      msgs.push({ fromSelf: true, message: formatted });
+      setMessages(msgs);
+      setFormattingoption("");
+    }
   };
 
   useEffect(() => {
     if (socket.current) {
-      socket.current.on("msg-recieve", (msg) => {
-        setArrivalMessage({ fromSelf: false, message: msg });
+      socket.current.on("msg-recieve", (recievedData) => {
+        setArrivalMessage({ fromSelf: false, message: recievedData.message });
       });
     }
   }, [socket]);
@@ -59,7 +174,7 @@ const ChatContainer = ({ currentChat, currentUser, socket }) => {
   return (
     <>
       {currentChat && currentUser && (
-        <Container>
+        <Container formatting={formatting}>
           <div className="chat-header">
             <div className="user-details">
               <div className="avatar">
@@ -76,6 +191,8 @@ const ChatContainer = ({ currentChat, currentUser, socket }) => {
           </div>
           <div className="chat-messages">
             {messages.map((msg) => {
+              const isCodeSnippet = msg.formatting === "codeSnippet";
+              const isCodeBlock = msg.formatting === "codeBlock";
               return (
                 <div>
                   <div
@@ -84,16 +201,36 @@ const ChatContainer = ({ currentChat, currentUser, socket }) => {
                     }`}
                     ref={scrollRef}
                     key={uuidv4()}
+                    onClick={(e) => {
+                      if (isCodeSnippet) {
+                        navigator.clipboard.writeText(e.target.textContent);
+                      }
+                    }}
                   >
                     <div className="content">
-                      <p>{msg.message}</p>
+                      <p
+                        dangerouslySetInnerHTML={{
+                          __html: parseMessageContent(
+                            msg.message,
+                            msg.formatting
+                          ),
+                        }}
+                      />
+
+                      {/* {msg.message}</p> */}
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-          <ChatInput handleSendMsg={handleSendMsg}></ChatInput>
+          <ChatInput
+            handleSendMsg={handleSendMsg}
+            formatting={formatting}
+            setFormatting={setFormatting}
+            formattingoption={formattingoption}
+            setFormattingoption={setFormattingoption}
+          ></ChatInput>
         </Container>
       )}
     </>
@@ -103,7 +240,7 @@ const ChatContainer = ({ currentChat, currentUser, socket }) => {
 const Container = styled.div`
   padding-top: 1rem;
   display: grid;
-  grid-template-rows: 10% 78% 12%;
+  grid-template-rows: 10% 70% 20%;
   gap: 0.1rem;
   overflow: hidden;
   @media screen and (min-width: 720px) and (max-width: 1080px) {
@@ -154,6 +291,14 @@ const Container = styled.div`
         font-size: 1.1rem;
         border-radius: 1rem;
         color: #d1d1d1;
+        .code-snippet {
+          background-color: black;
+          color: yellow;
+          padding: 0.5rem;
+          border-radius: 0.5rem;
+          cursor: pointer;
+          line-height: 2em;
+        }
       }
     }
     .sended {

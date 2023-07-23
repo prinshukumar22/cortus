@@ -92,7 +92,7 @@ const Container = styled.div`
     align-items: center;
     overflow: auto;
     gap: 0.8rem;
-    &::::-webkit-scrollbar {
+    &::-webkit-scrollbar {
       width: 0.2rem;
       &-thumb {
         background-color: #ffffff39;
